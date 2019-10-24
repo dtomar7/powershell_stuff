@@ -1,0 +1,107 @@
+
+PARAM( [Parameter()] [string] $oauth_consumer_key, [Parameter()]  [string] $oauth_consumer_secret,  [Parameter()] [string] $oauth_token, [Parameter()] [string] $oauth_token_secret, [Parameter()] $url ,[Parameter()][string] $file,[Parameter()] $startDate ,[Parameter()] $endDate ,[Parameter()][string] $serverName)
+
+#New Security Protocol
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+#Building Authentication string.
+$oauth_nonce = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes([System.DateTime]::Now.Ticks.ToString()));
+$ts = [System.DateTime]::UtcNow - [System.DateTime]::ParseExact("01/01/1970", "dd/MM/yyyy", $null).ToUniversalTime();
+$oauth_timestamp = [System.Convert]::ToInt64($ts.TotalSeconds).ToString();
+$signature = "POST&";
+$signature += [System.Uri]::EscapeDataString( $url)+"&";
+$signature += [System.Uri]::EscapeDataString("oauth_consumer_key=" + $oauth_consumer_key + "&");
+$signature += [System.Uri]::EscapeDataString("oauth_nonce=" + $oauth_nonce + "&"); 
+$signature += [System.Uri]::EscapeDataString("oauth_signature_method=HMAC-SHA1&");
+$signature += [System.Uri]::EscapeDataString("oauth_timestamp=" + $oauth_timestamp + "&");
+$signature += [System.Uri]::EscapeDataString("oauth_token=" + $oauth_token + "&");
+$signature += [System.Uri]::EscapeDataString("oauth_version=1.0");
+ 
+$signature_key = [System.Uri]::EscapeDataString($oauth_consumer_secret) + "&" + [System.Uri]::EscapeDataString($oauth_token_secret);
+ 
+$hmacsha1 = new-object System.Security.Cryptography.HMACSHA1;
+$hmacsha1.Key = [System.Text.Encoding]::ASCII.GetBytes($signature_key);
+$oauth_signature = [System.Convert]::ToBase64String($hmacsha1.ComputeHash([System.Text.Encoding]::ASCII.GetBytes($signature)));
+ 
+$oauth_authorization = 'OAuth ';
+$oauth_authorization += 'oauth_consumer_key="' + [System.Uri]::EscapeDataString($oauth_consumer_key) + '",';
+$oauth_authorization += 'oauth_nonce="' + [System.Uri]::EscapeDataString($oauth_nonce) + '",';
+$oauth_authorization += 'oauth_signature="' + [System.Uri]::EscapeDataString($oauth_signature) + '",';
+$oauth_authorization += 'oauth_signature_method="HMAC-SHA1",'
+$oauth_authorization += 'oauth_timestamp="' + [System.Uri]::EscapeDataString($oauth_timestamp) + '",'
+$oauth_authorization += 'oauth_token="' + [System.Uri]::EscapeDataString($oauth_token) + '",';
+$oauth_authorization += 'oauth_version="1.0"';
+$headers=@{'Authorization'= $oauth_authorization}
+
+#Testing API connection and if connection fails will ETL will fail as well the error message
+ 
+$testbody=@{"ended"= ' true' ;  "start"= @{  "from" = $startDate ; "to"= $endDate  } }| ConvertTo-Json;
+
+try { Invoke-restmethod -Method post -Uri $url  -Body $testbody -Headers $headers -ContentType 'application/JSON'
+
+    }
+ catch {
+              "Error in downloading file from the server"
+               Write-Host($error)
+               exit 1
+                                     
+           }
+
+#Building Connection String for SQL Connection
+$Connection = New-Object System.Data.SQLClient.SQLConnection
+$Connection.ConnectionString = "server='$serverName';trusted_connection=true;"
+
+#This API only lets extract 50 interactions, so we need loop through the data for every 30 mins.
+for ($c = $startDate-1800000; $c -le $endDate) #Using $startDate-1800000 to include first 30 min period in the loop as well 
+{
+
+     $c=$c+1800000
+     $body=@{"ended"= ' true' ;  "start"= @{  "from" = $c ; "to"=$c+ 1800000  } }| ConvertTo-Json;
+    
+     $InteractionCount=(Invoke-restmethod -Method post -Uri $url  -Body $body -Headers $headers -ContentType 'application/JSON').interactionHistoryRecords.Count
+    
+         if ($InteractionCount -gt 0 -and $InteractionCount -le 50)
+
+           {
+            
+                 try {
+
+                            Invoke-restmethod -Method post -Uri $url  -Body $body -Headers $headers -ContentType 'application/JSON' -OutFile $file
+                             
+                             $sql =
+                             "
+                             BEGIN
+                              EXEC [SRC].[DBO].[ABCDE_EDFH];
+                              EXEC [PSA].[DBO].[ABCDE_EDFH_INFO];
+                              EXEC [PSA].[DBO].[ABCDE_EDFH_TRANSCRIPT];
+                              EXEC [DW].[DBO].[ABCDE_EDFH_DETAIL]
+                            
+                             
+                             END
+                                 " 
+                                try {
+                                     Invoke-Sqlcmd -ConnectionString $Connection.ConnectionString -Query $sql -QueryTimeout 0
+                                 } catch {
+                                        "Error when running sql"
+                                        Write-Host($error)
+                                        exit 1
+                                     }
+                 
+                   
+                     }
+                     catch {
+                                "Error going through the loop"
+                                 Write-Host($error)
+                                 exit 1
+                            }
+
+        }
+        elseif($InteractionCount -gt 50)
+                        {
+                        
+                            throw 'There were more than 50 interactions in this period' 
+                            exit 1
+                        }
+
+
+}

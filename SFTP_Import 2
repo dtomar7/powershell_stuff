@@ -1,0 +1,23 @@
+
+PARAM(
+[Parameter()] [string] $userName, 
+ [Parameter()] [string] $password,
+ [Parameter()] [string] $ftpPath, 
+ [Parameter()] [string] $localFolder,
+ [Parameter()] [string] $fileNameSubstring
+ )
+
+
+$webClient = New-Object System.Net.WebClient
+$webClient.Credentials = New-Object System.Net.NetworkCredential($userName, $password) 
+$contents = $webClient.DownloadString($ftpPath)
+$html = New-Object -com "htmlfile"
+$html.IHTMLDocument2_write($contents)
+$htmlText = $html.all.tags('pre') | % Innertext  
+$ftpFile = $htmlText.split(" ",[System.StringSplitOptions]::RemoveEmptyEntries) | ? {$_  -like $fileNameSubstring }
+
+$ftpFilePath = $ftpPath + $ftpFile
+$localFileName = $localFolder + $ftpFile 
+$webClient.DownloadString($ftpFilePath) | Out-File  $localFileName
+$localFilePath = [System.IO.File]::WriteAllText($localFileName, [System.IO.File]::ReadAllText($localFileName) -replace '[\r\n]+$')
+$localFileName | Write-Host

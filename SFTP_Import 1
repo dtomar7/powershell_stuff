@@ -1,0 +1,32 @@
+ PARAM(
+  $userName, 
+  $password,
+  $ftpPath, 
+  $localFolder,
+  $ftpFolder,
+  $fileNameSubstring
+ )
+
+$securePassword = ConvertTo-SecureString $password -AsPlainText -Force
+$credential = New-Object System.Management.Automation.PSCredential ($userName, $securePassword)
+
+Get-SSHTrustedHost | Remove-SSHTrustedHost
+
+# Establish the SFTP connection
+$ThisSession = New-SFTPSession -ComputerName $ftpPath -Credential $credential -AcceptKey
+
+# Get the location of ftp folder contents
+$path = GET-SFTPchilditem -SessionId ($ThisSession).SessionId -Path $ftpFolder
+$fileName = $ftpFolder + $fileNameSubstring
+
+#Search for the file in the ftp folder
+$ftpFile = $path.FullName  | ? {$_  -like $fileName } 
+
+#If the File exists then, download the sftp file to local drive 
+if (  $ftpFile ) {
+Get-SFTPFile -SessionId ($ThisSession).SessionId -RemoteFile $ftpFile -LocalPath $localFolder 
+
+$localFile = $localFolder + '/'+ ($ftpFile -replace $ftpFolder, '')
+    (gc $localFile -Raw ) -replace "`n",' ' -replace '"' ,''  | Set-Content $localFile
+
+}

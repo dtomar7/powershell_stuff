@@ -1,0 +1,28 @@
+$Root = "LDAP://DC=YourCompanyDomain,DC=COM"
+$Searcher = New-Object DirectoryServices.DirectorySearcher
+$Searcher.SearchRoot = New-Object System.DirectoryServices.DirectoryEntry("$Root")
+$Filter = "(&(objectCategory=person)(objectClass=user))" # Get everyone!
+$Searcher.Filter = $Filter
+
+$users = @()
+
+$result = $Searcher.FindAll() | Sort-Object 
+foreach ($usrInfo in $result ) 
+    {    
+        if ($usrInfo.Properties["title"][0] -ne $null -OR $usrInfo.Properties["mailnickname"][0] -ne $null )
+        {
+         $user="" | select Userlogin, FirstName, LastName, Department, Email, JobTitle,  WorkPhone, WorkExtension, WorkMobile,Photo
+         $user.userLogin = $usrInfo.Properties["mailnickname"][0];
+         $user.FirstName = $usrInfo.Properties["givenname"][0];
+         $user.LastName = $usrInfo.Properties["sn"][0];
+         $user.Department = $usrInfo.Properties["department"][0]
+         $user.Email = $usrInfo.Properties["mail"][0];
+         $user.JobTitle = $usrInfo.Properties["title"][0];
+         $user.WorkPhone = $usrInfo.Properties["telephonenumber"][0];
+         $user.WorkExtension = $usrInfo.Properties["ipphone"][0];
+         $user.Photo = $usrInfo.Properties["thumbnailphoto"][0]
+         $users +=$user
+        } 
+
+    } 
+$users |  ConvertTo-Csv -NoType  | Set-Content "\\artemisfunds.com\DFS\userdata\Data\deepak.tomar\Desktop\ADData.csv" 

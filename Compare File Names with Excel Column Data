@@ -1,0 +1,39 @@
+cls scr
+$folderLocation = "C:\Users\deepak.tomar\Downloads\"
+$files = Get-ChildItem $folderLocation
+
+
+#Comparing File Names with excel column Data
+
+$strPath = "C:\Users\deepak.tomar\Desktop\pictures.xlsx"
+
+
+$objExcel = New-Object -ComObject Excel.Application
+$objExcel.Visible = $false
+
+$WorkBook = $objExcel.Workbooks.Open($strPath)
+$worksheet = $workbook.sheets.item("Sheet1")
+
+$UsedRange = $worksheet.usedrange
+
+$Data = ForEach($Row in ($UsedRange.Rows)){
+   
+        
+      $ADLogin = $Row.Cells.Item(2).Value2 + '.jpg'
+        
+     $ADLogin  
+      
+
+      $TestPath = $folderLocation + $ADLogin
+
+        if ( $(Try { Test-Path $TestPath.trim() } Catch { $false }) ) {
+       # write-host  "$ADLogin is correct"
+            }
+        Else {
+        write-host "$ADLogin not found"
+        }
+    
+}
+
+
+$objExcel.quit()

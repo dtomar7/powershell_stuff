@@ -1,0 +1,14 @@
+cls scr
+$folderLocation = "C:\Users\deepak.tomar\Downloads\"
+$files = Get-ChildItem $folderLocation
+
+foreach( $file in $files) {
+    
+        $charIndex = $file.Name.IndexOf( "_", $file.Name.IndexOf("True_") )
+        
+        $fileName = $file.Name
+        $len = $fileName.Length
+        $newName = $fileName.Substring($charIndex, $len -$charIndex) -replace ('%20','.' ) -replace '[^a-zA-Z-.]',''
+        Rename-Item -path $($folderLocation + $fileName) -NewName $newName
+
+}
